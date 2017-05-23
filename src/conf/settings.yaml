@@ -1,0 +1,4 @@
+---
+gc_interval: 1000
+partitions: 32
+

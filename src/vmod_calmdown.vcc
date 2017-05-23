@@ -1,0 +1,3 @@
+$Module calmdown 3 VMOD Calmdown, a simple rate limiting module for Varnish 5.X
+$Event calmdown_init
+$Function BOOL calmdown(STRING, INT, DURATION)
