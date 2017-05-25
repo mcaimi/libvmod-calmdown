@@ -140,7 +140,7 @@ bucket *searchBucket(bucket *headOfQueue, unsigned char *key, unsigned int keyle
     if (memcmp(holder->objectDigest, key, keylen) == 0) {
       // found!
       #ifdef DEBUG_BUCKETQUEUE
-        printf("%s: 0x%X\n","searchBucket(): Found Bucket at", holder);
+        printf("%s: 0x%X\n (req: %s res: %s)","searchBucket(): Found Bucket at", holder, holder->requester, holder->resource);
       #endif
       return holder;
     }
