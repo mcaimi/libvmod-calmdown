@@ -6,19 +6,20 @@
 
 ## DESCRIPTION
 
-A simple rate-limit module for Varnish Cache.
+A simple rate-limit module for Varnish Cache version 5.1.
 
 This module implements a rate limiting feature in Varnish that allows an user to set
-limits on how often a resource should be requested by the same source client IP. This is
+limits on how often a resource should be requested by the same source client. This is
 useful for example for internet-facing API providers, high-traffic services or websites 
 in general.
 
 The algorithm used is a variant of the [Token-Bucket algorithm](https://en.wikipedia.org/wiki/Token_bucket)
 
 The module works by:
-1. instantiating an array of linked lists (the bucket queues) and associating a pthread mutex to every item
-2. for every request the module computes the SHA1 hash of the source IP and determine which queue will handle the request
-3. once a queue is selected, a bucket is allocated for the current source IP hash.
+1. instantiating an list of linked lists (the bucket queues) and associating a pthread mutex to every item
+2. The string "compound_key" is created from the concatenation of (source key) + (resource key)
+3. for every request the module computes the SHA256 hash of the compound_key and determine which queue will handle the request
+4. once a queue is selected, a bucket is allocated for the current source IP hash.
 
 For every request, the time between the last call timestamp and the current is evaluated and the token counter is:
 1. Decreased by one
@@ -32,7 +33,7 @@ If a source IP hash consumes all its tokens, the user receives a "calm down" err
 
 ### Prototype:
 
-    calmdown(STRING S, INT I, DURATION D)
+    calmdown(STRING S, STRING R, INT I, DURATION D)
 
 ### Return value:
 
@@ -42,14 +43,15 @@ BOOL
 
   Rate limits access to resources.
 
-  S: is the actual URL you want to rate limit
-  I: is the initial token (number of calls) number associated to every bucket
-  D: the minimum interval in which varnish will let pass at most 'I' calls.
+* S: is the requester identificator (can be the source IP address or whatever)
+* R: is the URL you want to rate limit.
+* I: is the initial token (number of calls) number associated to every bucket
+* D: the minimum interval in which varnish will let pass at most 'I' calls.
 
 ### Example
 
     sub vcl_recv {
-      if (calmdown.calmdown(client.identity, 15, 10s)) {
+      if (calmdown.calmdown(client.identity, "/API/v1.0/", 15, 10s)) {
       # Client has exceeded 15 reqs per 10s
       return (synth(429, "Calm Down"));
     }

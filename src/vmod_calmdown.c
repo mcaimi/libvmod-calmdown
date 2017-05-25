@@ -75,7 +75,7 @@ static double get_ts_now(const struct vrt_ctx *ctx) {
 }
 
 // handle search and allocation of new buckets
-bucket *handle_bucket(unsigned char hash[DIGEST_LEN], VCL_INT ratio, VCL_DURATION capacity, double now, unsigned int digest_length, bucketList *headOfList) {
+bucket *handle_bucket(unsigned char hash[DIGEST_LEN], VCL_STRING requester, VCL_STRING resource, VCL_INT ratio, VCL_DURATION capacity, double now, unsigned int digest_length, bucketList *headOfList) {
   bucket *item;
 
   // search for an already allocated bucket...
@@ -92,7 +92,7 @@ bucket *handle_bucket(unsigned char hash[DIGEST_LEN], VCL_INT ratio, VCL_DURATIO
     return item;
   } else {
     // allocate and insert new bucket
-    item = allocateBucket(hash, digest_length, ratio, capacity);
+    item = allocateBucket(hash, requester, resource, digest_length, ratio, capacity);
     headOfList->listHead = addBucket(item, headOfList->listHead);
 
     // return new address
@@ -114,10 +114,15 @@ static void run_gc(double now, unsigned part) {
 }
 
 // main ban function and parameters
-VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING key, VCL_INT ratio, VCL_DURATION capacity) {
+VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING requester, VCL_STRING resource, VCL_INT ratio, VCL_DURATION capacity) {
   unsigned ret = 1;
 
-  // key bucket
+  // composite requester variable.
+  // the bucket requester is "key" from the VCL + "resource" from the VCL
+  // for example: client.identity + req.url --> "192.168.0.1" + "/api/resource"
+  unsigned char *compound_requester = NULL;
+
+  // requester bucket
   bucket *b;
 
   // get timestamp from request context
@@ -128,8 +133,19 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING key, VCL_INT ratio,
   unsigned char digest[DIGEST_LEN];
   unsigned part;
 
-  if (!key)
+  if (!requester)
     return (1);
+
+  // build compound requester
+  compound_size = strlen(requester) + strlen(resource) + 1;
+  compound_requester = (unsigned char*)malloc(compound_size);
+  // handle OOM
+  if (compound_requester == NULL)
+      return (1);
+
+  bzero(compound_requester, compound_size);
+  memcpy(compound_requester, requester, strlen(requester));
+  memcpy(compound_requester + requester, resource, strlen(resouce));
 
   // assert MAX_BUCKET_LISTS is a power of 2
   if (global_opts.partitions & (global_opts.partitions -1))
@@ -137,9 +153,9 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING key, VCL_INT ratio,
 
   // initialize SHA256 hash engine
   SHA256_CTX sctx;
-  // calculate SHA1 digest of key (ip address, url location, URI....)
+  // calculate SHA256 digest of requester (ip address, url location, URI....)
   SHA256_Init(&sctx);
-  SHA256_Update(&sctx, key, strlen(key));
+  SHA256_Update(&sctx, compound_requester, strlen(compound_size));
   SHA256_Final(digest, &sctx);
 
   // select list based on hash.
@@ -158,8 +174,8 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING key, VCL_INT ratio,
   // by AND-ing the original number with 2^N-1, you mask out all bits except for the N-1 bits
   // significant for the remainder (== 0 if multiple, != 0 if not multiple)
   //
-  // get bucket list
-  part = digest[0] & (global_opts.partitions - 1);
+  // get bucket list (16 bit requester..)
+  part = (digest[0] << 8 | digest[1]) & (global_opts.partitions - 1);
   v = get_bucket(part);
   #ifdef DEBUG_BUCKETQUEUE
     printf("vmod_calmdown.c: calmdown(): Selected hash container ID %d for digest %s\n", part, digest);
@@ -171,8 +187,8 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING key, VCL_INT ratio,
   AZ(pthread_mutex_lock(&v->list_mutex));
 
   // search and get relevant bucket and calculate tokens
-  // if key is new, calculate SHA256 hash and allocate a new bucket.
-  b = handle_bucket(digest, ratio, capacity, now, DIGEST_LEN, v);
+  // if requester is new, calculate SHA256 hash and allocate a new bucket.
+  b = handle_bucket(digest, requester, resource, ratio, capacity, now, DIGEST_LEN, v);
   calc_tokens(b, now);
   if (b->tokens > 0) {
     b->tokens -= 1;
@@ -201,6 +217,10 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING key, VCL_INT ratio,
       printf("vmod_calmdown.c: calmdown(): GC END: %d requests done, %d more to trigger Garbage Collection.\n", v->gc_count, global_opts.gc_interval - v->gc_count);
     #endif
   }
+
+  // free resources
+  if (compound_key != NULL)
+      free(compound_key);
 
   // unlock queue mutex
   AZ(pthread_mutex_unlock(&v->list_mutex));

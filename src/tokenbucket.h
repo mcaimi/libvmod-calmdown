@@ -28,6 +28,10 @@ struct __bucketItem {
   double ratio;
   // last accessed timestamp
   double lastAccess;
+  // resource requester
+  unsigned char *requester;
+  // requested resource that we want to rate-limit
+  unsigned char *resource;
   // num tokens
   double tokens;
   // next item
@@ -43,7 +47,7 @@ typedef struct __bucketItem bucket;
  */
 
 // allocate a new bucket in memory
-bucket *allocateBucket(unsigned char *key, unsigned int digest_len, double bucketCapacity, double hitRatio);
+bucket *allocateBucket(unsigned char *key, unsigned char*requester, unsigned char*resource, unsigned int digest_len, double bucketCapacity, double hitRatio);
 
 // free a bucket and release memory
 void freeBucket(bucket *item);

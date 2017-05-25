@@ -6,7 +6,7 @@
 #include "tokenbucket.h"
 
 // allocate bucket
-bucket *allocateBucket(unsigned char *key, unsigned int digest_len, double hitRatio, double bucketCapacity) {
+bucket *allocateBucket(unsigned char *key, unsigned char *requester, unsigned char *request, unsigned int digest_len, double hitRatio, double bucketCapacity) {
   bucket *newItem = NULL;
 
   // allocate memory for new bucket
@@ -35,6 +35,23 @@ bucket *allocateBucket(unsigned char *key, unsigned int digest_len, double hitRa
   bzero(newItem->objectDigest, digest_len + 1);
   memcpy(newItem->objectDigest, key, digest_len);
 
+  newItem->requester = (unsigned char*)malloc(strlen(requester) + 1);
+  newItem->resource = (unsigned char*)malloc(strlen(resource) + 1);
+  if ((newItem->requester == NULL) || (newItem->resource == NULL)) {
+    #ifdef DEBUG_BUCKETQUEUE
+      printf("%s: 0x%X\n","allocateBucket(): Failed to allocate memory for request/resource data", newItem);
+    #endif
+
+    freeBucket(newItem);
+    return NULL;
+  }
+
+  bzero(newItem->requester, strlen(requester) + 1);
+  memcpy(newItem->requester, requester, strlen(requester));
+
+  bzero(newItem->resource, strlen(resource) + 1);
+  memcpy(newItem->resource, resource, strlen(resource));
+
   #ifdef DEBUG_BUCKETQUEUE
     printf("%s: %s\n","allocateBucket(): objectDigest value is ", newItem->objectDigest);
   #endif
@@ -59,6 +76,24 @@ void freeBucket(bucket *item) {
 
       free(item->objectDigest);
       item->objectDigest = NULL;
+    }
+    if (item->requester != NULL) {
+
+    #ifdef DEBUG_BUCKETQUEUE
+      printf("%s: 0x%X\n","freeBucket(): Deallocating requester", item->requester);
+    #endif
+
+      free(item->requester);
+      item->requester = NULL;
+    }
+    if (item->resource != NULL) {
+
+    #ifdef DEBUG_BUCKETQUEUE
+      printf("%s: 0x%X\n","freeBucket(): Deallocating resource", item->resource);
+    #endif
+
+      free(item->resource);
+      item->resource = NULL;
     }
 
     // free the rest
