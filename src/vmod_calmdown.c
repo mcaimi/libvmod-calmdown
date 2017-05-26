@@ -92,7 +92,7 @@ bucket *handle_bucket(unsigned char hash[DIGEST_LEN], VCL_STRING requester, VCL_
     return item;
   } else {
     // allocate and insert new bucket
-    item = allocateBucket(hash, requester, resource, digest_length, ratio, capacity);
+    item = allocateBucket(hash, (unsigned char *)requester, (unsigned char *)resource, digest_length, ratio, capacity);
     headOfList->listHead = addBucket(item, headOfList->listHead);
 
     // return new address
@@ -121,6 +121,7 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING requester, VCL_STRI
   // the bucket requester is "key" from the VCL + "resource" from the VCL
   // for example: client.identity + req.url --> "192.168.0.1" + "/api/resource"
   unsigned char *compound_requester = NULL;
+  unsigned int compound_size;
 
   // requester bucket
   bucket *b;
@@ -145,7 +146,7 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING requester, VCL_STRI
 
   bzero(compound_requester, compound_size);
   memcpy(compound_requester, requester, strlen(requester));
-  memcpy(compound_requester + requester, resource, strlen(resouce));
+  memcpy(compound_requester + strlen(requester), resource, strlen(resource));
 
   // assert MAX_BUCKET_LISTS is a power of 2
   if (global_opts.partitions & (global_opts.partitions -1))
@@ -155,7 +156,7 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING requester, VCL_STRI
   SHA256_CTX sctx;
   // calculate SHA256 digest of requester (ip address, url location, URI....)
   SHA256_Init(&sctx);
-  SHA256_Update(&sctx, compound_requester, strlen(compound_size));
+  SHA256_Update(&sctx, compound_requester, compound_size);
   SHA256_Final(digest, &sctx);
 
   // select list based on hash.
@@ -178,7 +179,7 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING requester, VCL_STRI
   part = (digest[0] << 8 | digest[1]) & (global_opts.partitions - 1);
   v = get_bucket(part);
   #ifdef DEBUG_BUCKETQUEUE
-    printf("vmod_calmdown.c: calmdown(): Selected hash container ID %d for digest %s\n", part, digest);
+    printf("vmod_calmdown.c: calmdown(): Selected hash container ID %d\n", part);
     printf("vmod_calmdown.c: calmdown(): Selected bucketList 0x%X \n", v);
     printf("vmod_calmdown.c: calmdown(): Selected listHead is at 0x%X \n", v->listHead);
   #endif
@@ -219,8 +220,8 @@ VCL_BOOL vmod_calmdown(const struct vrt_ctx *ctx, VCL_STRING requester, VCL_STRI
   }
 
   // free resources
-  if (compound_key != NULL)
-      free(compound_key);
+  if (compound_requester != NULL)
+      free(compound_requester);
 
   // unlock queue mutex
   AZ(pthread_mutex_unlock(&v->list_mutex));

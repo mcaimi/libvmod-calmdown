@@ -6,7 +6,7 @@
 #include "tokenbucket.h"
 
 // allocate bucket
-bucket *allocateBucket(unsigned char *key, unsigned char *requester, unsigned char *request, unsigned int digest_len, double hitRatio, double bucketCapacity) {
+bucket *allocateBucket(unsigned char *key, unsigned char *requester, unsigned char *resource, unsigned int digest_len, double hitRatio, double bucketCapacity) {
   bucket *newItem = NULL;
 
   // allocate memory for new bucket
@@ -96,7 +96,7 @@ void freeBucket(bucket *item) {
       item->resource = NULL;
     }
 
-    // free the rest
+    // fre item
     #ifdef DEBUG_BUCKETQUEUE
       printf("%s: 0x%X\n","freeBucket(): Deallocating Bucket", item);
     #endif
@@ -140,7 +140,7 @@ bucket *searchBucket(bucket *headOfQueue, unsigned char *key, unsigned int keyle
     if (memcmp(holder->objectDigest, key, keylen) == 0) {
       // found!
       #ifdef DEBUG_BUCKETQUEUE
-        printf("%s: 0x%X\n (req: %s res: %s)","searchBucket(): Found Bucket at", holder, holder->requester, holder->resource);
+        printf("%s: 0x%X (req: %s res: %s) \n","searchBucket(): Found Bucket at", holder, holder->requester, holder->resource);
       #endif
       return holder;
     }

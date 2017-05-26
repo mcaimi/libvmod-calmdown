@@ -10,7 +10,7 @@ A simple rate-limit module for Varnish Cache version 5.1.
 
 This module implements a rate limiting feature in Varnish that allows an user to set
 limits on how often a resource should be requested by the same source client. This is
-useful for example for internet-facing API providers, high-traffic services or websites 
+useful for example for internet-facing API providers, high-traffic services or websites
 in general.
 
 The algorithm used is a variant of the [Token-Bucket algorithm](https://en.wikipedia.org/wiki/Token_bucket)
@@ -25,7 +25,10 @@ For every request, the time between the last call timestamp and the current is e
 1. Decreased by one
 2. Increased by a value proportional to the timestamp difference.
 
-If a source IP hash consumes all its tokens, the user receives a "calm down" error from varnish.
+If a source hash consumes all its tokens, the user receives a "calm down" error from varnish. The module was inspired by the
+throttle module.
+
+The module can apply the same bucket value to every requested URL or can handle different bucket values for different URLs.
 
 ## FUNCTIONS
 
@@ -44,16 +47,42 @@ BOOL
   Rate limits access to resources.
 
 * S: is the requester identificator (can be the source IP address or whatever)
-* R: is the URL you want to rate limit.
+* R: is the URL you want to rate limit. (can be a fixed string, in case every URL must be equally limited)
 * I: is the initial token (number of calls) number associated to every bucket
 * D: the minimum interval in which varnish will let pass at most 'I' calls.
 
-### Example
+### Usage Examples
+
+Rate limiting everything by the same ruleset (same bucket value), only a single call to the module is needed in the VCL.
+The "R" parameter needs to be a fixed string, such as "/":
 
     sub vcl_recv {
-      if (calmdown.calmdown(client.identity, "/API/v1.0/", 15, 10s)) {
+      if (calmdown.calmdown(client.identity, "/", 15, 10s)) {
       # Client has exceeded 15 reqs per 10s
       return (synth(429, "Calm Down"));
+    }
+
+The ratelimiting function can be used multiple times to limit URLs by different bucket values:
+
+    sub vlc_recv {
+      if (req.url ~ "/api/v1.0") {
+        if (calmdown.calmdown(client.identity, req.url, 15, 10s)) {
+          # Client has exceeded 15 reqs per 10s
+          return (synth(429, "Calm Down"));
+        }
+      }
+    }
+
+Otherwise every possible (request identifier / resource requested) pair can be ratelimitied differently. For example, one could
+rate limit accesses by browser user-agent:
+
+    sub vcl_recv {
+      if (req.http.user-agent ~ "Mozilla") {
+        if (calmdown.calmdown(client.identity, req.http.user-agent, 15, 10s)) {
+            # Client has exceeded 15 reqs per 10s
+            return (synth(429, "Calm Down"));
+          }
+      }
     }
 
 ## INSTALLATION
@@ -96,18 +125,6 @@ software will search for that hardcoded path.
 By default, the vmod ``configure`` script installs the built vmod in the
 directory relevant to the prefix. The vmod installation directory can be
 overridden by passing the ``vmoddir`` variable to ``make install``.
-
-## USAGE
-
-In your VCL you could then use this vmod along the following lines::
-
-    import calmdown;
-
-    sub vcl_recv {
-      if (calmdown.calmdown(client.identity, 15, 10s)) {
-      # Client has exceeded 15 reqs per 10s
-      return (synth(429, "Calm Down"));
-    }
 
 ## COMMON PROBLEMS
 
